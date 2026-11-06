@@ -1,88 +1,100 @@
 
 {tab === "attendance" && (
   <>
+    
+{tab === "attendance" && (
+  <>
     <Toolbar
       title="เช็คชื่อกิจกรรม"
-      desc="รายชื่อผู้เข้าร่วมและสถานะการเช็คชื่อ"
+      desc="ติ๊กชื่อสมาชิกเพื่อบันทึกการเข้าร่วมกิจกรรม"
     />
 
-    {activities.map(a => {
+    {activities.map(activity => {
       const checked = attendance.filter(
-        x => x.activity_id === a.id
+        item => item.activity_id === activity.id
       );
 
-      const checkedIds = checked.map(x => x.member_id);
-
-      const notChecked = active.filter(
-        m => !checkedIds.includes(m.id)
-      );
+      const checkedIds = checked.map(item => item.member_id);
 
       return (
-        <section className="panel" key={a.id}>
+        <section className="panel attendance-panel" key={activity.id}>
           <PanelTitle
-            title={a.activity_name}
-            subtitle={`${checked.length} / ${active.length} คนเช็คชื่อแล้ว`}
+            title={activity.activity_name}
+            subtitle={`${checked.length} / ${activeMembers.length} คน`}
           />
 
           <div className="attendance-summary">
-            <span>เช็คชื่อแล้ว <b>{checked.length}</b> คน</span>
-            <span>ยังไม่เช็คชื่อ <b>{notChecked.length}</b> คน</span>
+            <b>🟢 มาแล้ว {checked.length} คน</b>
+            <b>⚪ ยังไม่มา {activeMembers.length - checked.length} คน</b>
           </div>
 
-          <h4>🟢 รายชื่อผู้เช็คชื่อแล้ว</h4>
-
-          <div className="att-list">
-            {checked.map(x => {
-              const member = members.find(
-                m => m.id === x.member_id
+          <div className="attendance-checkbox-list">
+            {activeMembers.map(member => {
+              const record = checked.find(
+                item => item.member_id === member.id
               );
 
               return (
-                <div key={x.id}>
-                  <CheckCircle2 size={17} />
-                  <b>{member?.display_name || "ไม่พบรายชื่อสมาชิก"}</b>
-                  <small>
-                    {x.checked_at
-                      ? new Date(x.checked_at).toLocaleString("th-TH")
-                      : "ไม่ระบุเวลา"}
-                  </small>
-                </div>
+                <label
+                  key={member.id}
+                  className="attendance-checkbox"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!record}
+                    disabled={!admin || busy}
+                    onChange={async event => {
+                      const isChecked = event.target.checked;
+
+                      setBusy(true);
+                      setErr("");
+
+                      try {
+                        if (isChecked) {
+                          const { error } = await supabase
+                            .from("attendance")
+                            .insert({
+                              activity_id: activity.id,
+                              member_id: member.id
+                            });
+
+                          if (error) throw error;
+                        } else {
+                          const { error } = await supabase
+                            .from("attendance")
+                            .delete()
+                            .eq("id", record.id);
+
+                          if (error) throw error;
+                        }
+
+                        setNotice(
+                          isChecked
+                            ? `เช็คชื่อ ${member.display_name} แล้ว`
+                            : `ยกเลิกเช็คชื่อ ${member.display_name} แล้ว`
+                        );
+
+                        await loadAll();
+                      } catch (error) {
+                        setErr(error.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
+
+                  <span className="attendance-member-name">
+                    {member.display_name}
+                  </span>
+
+                  <span className={
+                    record ? "attendance-done" : "attendance-waiting"
+                  }>
+                    {record ? "เช็คชื่อแล้ว" : "ยังไม่เช็คชื่อ"}
+                  </span>
+                </label>
               );
             })}
-
-            {checked.length === 0 && (
-              <p className="muted">ยังไม่มีสมาชิกเช็คชื่อ</p>
-            )}
-          </div>
-
-          <h4>⚪ รายชื่อผู้ยังไม่เช็คชื่อ</h4>
-
-          <div className="att-list">
-            {notChecked.map(m => (
-              <div key={m.id}>
-                <span className="not-checked-dot" />
-                {m.display_name}
-
-                {admin && (
-                  <button
-                    className="small-action"
-                    onClick={() => {
-                      setForm({
-                        activity_id: a.id,
-                        member_id: m.id
-                      });
-                      setModal("attendance");
-                    }}
-                  >
-                    เช็คชื่อ
-                  </button>
-                )}
-              </div>
-            ))}
-
-            {notChecked.length === 0 && (
-              <p className="muted">สมาชิกเช็คชื่อครบทุกคนแล้ว</p>
-            )}
           </div>
         </section>
       );
