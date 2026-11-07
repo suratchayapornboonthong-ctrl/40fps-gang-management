@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Wallet, HandCoins, Package, Users, CalendarCheck,
   CalendarDays, LogOut, Plus, RefreshCw, Search, Menu, X, ShieldCheck,
   ArrowDownLeft, ArrowUpRight, CheckCircle2, Trash2, Edit3, Lock,
-  ClipboardList, ChevronRight
+    ClipboardList, ChevronRight, Trophy
 } from "lucide-react";
 import "./style.css";
 
@@ -23,7 +23,8 @@ const NAV = [
   ["payments", "ส่งเงินรายสัปดาห์", HandCoins],
   ["deliveries", "ส่งของแก๊ง", Package],
   ["attendance", "เช็คชื่อกิจกรรม", CalendarCheck],
-  ["leave", "แจ้งลา", CalendarDays]
+  ["leave", "แจ้งลา", CalendarDays],
+  ["kindofloop", "Kind of Loop", Trophy],
 ];
 
 const DELIVERY_ITEMS = [
@@ -92,7 +93,10 @@ export default function App() {
   const [attendance, setAttendance] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [publicLeaves, setPublicLeaves] = useState([]);
-
+  const [kindOfLoopEntries, setKindOfLoopEntries] = useState([]);
+  const [kindOfLoopSelected, setKindOfLoopSelected] = useState([]);
+  const [kindOfLoopUrl, setKindOfLoopUrl] = useState("");
+  const [kindOfLoopNote, setKindOfLoopNote] = useState("");
   const [modal, setModal] = useState("");
   const [form, setForm] = useState({});
   const [editingId, setEditingId] = useState(null);
@@ -122,6 +126,19 @@ export default function App() {
   }, [payments, currentWeek]);
 
   const weeklyPaidTotal = Object.values(paidByMember).reduce((sum, amount) => sum + amount, 0);
+  const kindOfLoopLeaderboard = useMemo(() => {
+  const totals = {};
+
+  kindOfLoopEntries.forEach(entry => {
+    (entry.selected_members || []).forEach(name => {
+      totals[name] = (totals[name] || 0) + Number(entry.points || 1);
+    });
+  });
+
+  return Object.entries(totals)
+    .map(([name, points]) => ({ name, points }))
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+}, [kindOfLoopEntries]);
   const pageTitle = NAV.find(item => item[0] === tab)?.[1] || "ภาพรวม";
 
   const loadAll = useCallback(async (showLoader = true) => {
@@ -148,15 +165,16 @@ export default function App() {
       }
       setProfile(currentProfile);
 
-      const readTables = [
-        ["members", setMembers],
-        ["income", setIncome],
-        ["expenses", setExpenses],
-        ["weekly_payments", setPayments],
-        ["deliveries", setDeliveries],
-        ["activities", setActivities],
-        ["attendance", setAttendance]
-      ];
+    const readTables = [
+  ["members", setMembers],
+  ["income", setIncome],
+  ["expenses", setExpenses],
+  ["weekly_payments", setPayments],
+  ["deliveries", setDeliveries],
+  ["activities", setActivities],
+  ["attendance", setAttendance],
+  ["kind_of_loop_entries", setKindOfLoopEntries]
+];
 
       const results = await Promise.all(
         readTables.map(async ([table, setter]) => {
@@ -227,7 +245,7 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
     const channel = supabase.channel("40fps-management-live");
-    ["members", "income", "expenses", "weekly_payments", "deliveries", "activities", "attendance"]
+    ["members", "income", "expenses", "weekly_payments", "deliveries", "activities", "attendance","kind_of_loop_entries"]
       .forEach(table => {
         channel.on("postgres_changes", {
           event: "*", schema: "public", table
@@ -249,6 +267,59 @@ export default function App() {
   }, [loadAll]);
 
   async function handleLogin(event) {
+  event.preventDefault();
+
+  if (!isAdmin || !session?.user?.id) {
+    setError("เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้");
+    return;
+  }
+
+  if (kindOfLoopSelected.length === 0) {
+    setError("กรุณาเลือกสมาชิกอย่างน้อย 1 คน");
+    return;
+  }
+
+  let parsedUrl;
+
+  try {
+    parsedUrl = new URL(kindOfLoopUrl.trim());
+  } catch {
+    setError("กรุณาวางลิงก์หลักฐานให้ถูกต้อง");
+    return;
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    setError("ลิงก์หลักฐานต้องขึ้นต้นด้วย https://");
+    return;
+  }
+
+  setBusy(true);
+  setError("");
+
+  try {
+    const { error: submitError } = await supabase
+      .from("kind_of_loop_entries")
+      .insert({
+        selected_members: kindOfLoopSelected,
+        points: 1,
+        image_url: parsedUrl.href,
+        note: kindOfLoopNote.trim() || null,
+        created_by: session.user.id
+      });
+
+    if (submitError) throw submitError;
+
+    setKindOfLoopSelected([]);
+    setKindOfLoopUrl("");
+    setKindOfLoopNote("");
+    setNotice(`บันทึกคะแนน +1 ให้สมาชิก ${kindOfLoopSelected.length} คนแล้ว`);
+
+    await loadAll(false);
+  } catch (e) {
+    setError(e.message || "ส่งหลักฐานไม่สำเร็จ");
+  } finally {
+    setBusy(false);
+  }
     event.preventDefault();
     setBusy(true);
     setError("");
@@ -380,7 +451,63 @@ export default function App() {
       setBusy(false);
     }
   }
+  async function submitKindOfLoop(event) {
+    event.preventDefault();
 
+    if (!isAdmin || !session?.user?.id) {
+      setError("เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้");
+      return;
+    }
+
+    if (kindOfLoopSelected.length === 0) {
+      setError("กรุณาเลือกสมาชิกอย่างน้อย 1 คน");
+      return;
+    }
+
+    let parsedUrl;
+
+    try {
+      parsedUrl = new URL(kindOfLoopUrl.trim());
+    } catch {
+      setError("กรุณาวางลิงก์หลักฐานให้ถูกต้อง");
+      return;
+    }
+
+    if (parsedUrl.protocol !== "https:") {
+      setError("ลิงก์หลักฐานต้องขึ้นต้นด้วย https://");
+      return;
+    }
+
+    const selectedCount = kindOfLoopSelected.length;
+
+    setBusy(true);
+    setError("");
+
+    try {
+      const { error: submitError } = await supabase
+        .from("kind_of_loop_entries")
+        .insert({
+          selected_members: kindOfLoopSelected,
+          points: 1,
+          image_url: parsedUrl.href,
+          note: kindOfLoopNote.trim() || null,
+          created_by: session.user.id
+        });
+
+      if (submitError) throw submitError;
+
+      setKindOfLoopSelected([]);
+      setKindOfLoopUrl("");
+      setKindOfLoopNote("");
+      setNotice(`บันทึกคะแนน +1 ให้สมาชิก ${selectedCount} คนแล้ว`);
+
+      await loadAll(false);
+    } catch (e) {
+      setError(e.message || "ส่งหลักฐานไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
   if (!supabase) {
     return (
       <div className="setup-screen">
@@ -574,6 +701,148 @@ export default function App() {
             </tbody></table></div></div>}
           </section>
         )}
+        
+        {tab === "kindofloop" && (
+          <section className="page-content">
+            <Toolbar
+              title="Kind of Loop"
+              description="ส่งหลักฐานเพื่อรับคะแนน +1 ต่อสมาชิกที่เลือก"
+            />
+
+            {isAdmin && (
+              <div className="surface-card form-card">
+                <SectionHeading
+                  title="ส่งหลักฐานกิจกรรม"
+                  detail="เลือกสมาชิกที่ได้รับคะแนนและวางลิงก์รูปหลักฐาน"
+                />
+
+                <form onSubmit={submitKindOfLoop} className="form-stack">
+                  <div className="form-field">
+                    <label>เลือกสมาชิกที่ได้รับคะแนน</label>
+                    <div className="attendance-list">
+                      {activeMembers.map(member => (
+                        <label key={member.id} className="attendance-item">
+                          <input
+                            type="checkbox"
+                            checked={kindOfLoopSelected.includes(member.display_name)}
+                            onChange={event =>
+                              setKindOfLoopSelected(prev =>
+                                event.target.checked
+                                  ? [...prev, member.display_name]
+                                  : prev.filter(name => name !== member.display_name)
+                              )
+                            }
+                          />
+                          <span>{member.display_name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-field">
+                    <label>ลิงก์รูปหลักฐาน (HTTPS)</label>
+                    <input
+                      type="url"
+                      value={kindOfLoopUrl}
+                      onChange={event => setKindOfLoopUrl(event.target.value)}
+                      placeholder="วางลิงก์รูปภาพที่นี่"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label>หมายเหตุ (ถ้ามี)</label>
+                    <textarea
+                      value={kindOfLoopNote}
+                      onChange={event => setKindOfLoopNote(event.target.value)}
+                      placeholder="รายละเอียดเพิ่มเติม"
+                    />
+                  </div>
+
+                  <button className="primary-button" type="submit" disabled={busy}>
+                    {busy ? "กำลังบันทึก..." : "บันทึกคะแนน +1"}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {!isAdmin && (
+              <div className="surface-card">
+                <p>เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้</p>
+              </div>
+            )}
+
+            <div className="surface-card table-card">
+              <SectionHeading title="อันดับคะแนน Kind of Loop" detail="เรียงตามคะแนนสะสมของสมาชิก" />
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>อันดับ</th>
+                      <th>สมาชิก</th>
+                      <th>คะแนน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kindOfLoopLeaderboard.map((item, index) => (
+                      <tr key={item.name}>
+                        <td>{index + 1}</td>
+                        <td>{item.name}</td>
+                        <td>{item.points}</td>
+                      </tr>
+                    ))}
+                    {!kindOfLoopLeaderboard.length && (
+                      <tr>
+                        <td colSpan="3">
+                          <EmptyState text="ยังไม่มีคะแนน Kind of Loop" />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="surface-card table-card">
+              <SectionHeading title="ประวัติการส่งหลักฐาน" detail="ตรวจสอบสมาชิก คะแนน และหลักฐานย้อนหลัง" />
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>วันที่</th>
+                      <th>สมาชิกที่ได้รับคะแนน</th>
+                      <th>หมายเหตุ</th>
+                      <th>หลักฐาน</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...kindOfLoopEntries]
+                      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                      .map(entry => (
+                        <tr key={entry.id}>
+                          <td>{dateTH(entry.created_at)}</td>
+                          <td>{(entry.selected_members || []).join(", ")}</td>
+                          <td>{entry.note || "—"}</td>
+                          <td>
+                            <a href={entry.image_url} target="_blank" rel="noreferrer">
+                              เปิดหลักฐาน
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    {!kindOfLoopEntries.length && (
+                      <tr>
+                        <td colSpan="4">
+                          <EmptyState text="ยังไม่มีประวัติหลักฐาน" />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       {loginOpen && <Modal title="เข้าสู่ระบบผู้ดูแล" close={() => setLoginOpen(false)}><form className="form-stack" onSubmit={handleLogin}>
@@ -676,6 +945,7 @@ function FormContent({ type, form, setForm, members, editingId, onSubmit }) {
       <Field label={`จำนวน ${UNIT_BY_ITEM[form.item_name] ? `(${UNIT_BY_ITEM[form.item_name]})` : ""}`}><input type="number" min="1" value={form.quantity || ""} onChange={event => update("quantity", event.target.value)} required /></Field>
       <Field label="หมายเหตุ"><textarea rows="3" value={form.note || ""} onChange={event => update("note", event.target.value)} /></Field>
     </>}
+    
     {type === "activity" && <Field label="ชื่อกิจกรรม"><input value={form.activity_name || ""} onChange={event => update("activity_name", event.target.value)} placeholder="เช่น กิจกรรมประจำสัปดาห์" required /></Field>}
     {type === "leave" && <>
       <Field label="ชื่อสมาชิก"><select value={form.member_id || ""} onChange={event => update("member_id", event.target.value)} required><option value="">เลือกสมาชิก</option>{members.map(member => <option key={member.id} value={member.id}>{member.display_name}</option>)}</select></Field>
