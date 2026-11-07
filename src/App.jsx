@@ -410,11 +410,6 @@ const readTables = [
   async function submitKindOfLoop(event) {
     event.preventDefault();
 
-    if (!session?.user?.id) {
-      setError("กรุณาเข้าสู่ระบบก่อนส่งหลักฐาน");
-      return;
-    }
-
     if (kindOfLoopSelected.length === 0) {
       setError("กรุณาเลือกสมาชิกอย่างน้อย 1 คน");
       return;
@@ -446,8 +441,7 @@ const readTables = [
           selected_members: kindOfLoopSelected,
           points: 1,
           image_url: parsedUrl.href,
-          note: kindOfLoopNote.trim() || null,
-          created_by: session.user.id
+          note: kindOfLoopNote.trim() || null
         });
 
       if (submitError) throw submitError;
@@ -665,8 +659,7 @@ const readTables = [
               description="ส่งหลักฐานเพื่อรับคะแนน +1 ต่อสมาชิกที่เลือก"
             />
 
-            {session?.user?.id && (
-              <div className="surface-card form-card">
+            <div className="surface-card form-card">
                 <SectionHeading
                   title="ส่งหลักฐานกิจกรรม"
                   detail="เลือกสมาชิกที่ได้รับคะแนนและวางลิงก์รูปหลักฐาน"
@@ -719,14 +712,7 @@ const readTables = [
                     {busy ? "กำลังบันทึก..." : "บันทึกคะแนน +1"}
                   </button>
                 </form>
-              </div>
-            )}
-
-            {!session?.user?.id && (
-              <div className="surface-card">
-                <p>กรุณาเข้าสู่ระบบก่อน จึงจะสามารถส่งหลักฐาน Kind of Loop ได้</p>
-              </div>
-            )}
+            </div>
 
             <div className="surface-card table-card">
               <SectionHeading title="อันดับคะแนน Kind of Loop" detail="เรียงตามคะแนนสะสมของสมาชิก" />
