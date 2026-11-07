@@ -696,29 +696,59 @@ const readTables = [
             <div className="surface-card form-card">
                 <SectionHeading
                   title="ส่งหลักฐานกิจกรรม"
-                  detail="เลือกสมาชิกที่ได้รับคะแนนและวางลิงก์รูปหลักฐาน"
+                  detail="เลือกสมาชิกที่ได้รับคะแนน แล้วแคปรูปกด Ctrl + V เพื่อวางหลักฐาน"
                 />
 
                 <form onSubmit={submitKindOfLoop} className="form-stack">
                   <div className="form-field">
-                    <label>เลือกสมาชิกที่ได้รับคะแนน</label>
-                    <div className="attendance-list">
-                      {activeMembers.map(member => (
-                        <label key={member.id} className="attendance-item">
-                          <input
-                            type="checkbox"
-                            checked={kindOfLoopSelected.includes(member.display_name)}
-                            onChange={event =>
-                              setKindOfLoopSelected(prev =>
-                                event.target.checked
-                                  ? [...prev, member.display_name]
-                                  : prev.filter(name => name !== member.display_name)
-                              )
-                            }
-                          />
-                          <span>{member.display_name}</span>
-                        </label>
-                      ))}
+                    <label>เลือกสมาชิกที่ได้รับคะแนน <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.7 }}>({kindOfLoopSelected.length} คน)</span></label>
+                    <div
+                      className="kindofloop-member-grid"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))",
+                        gap: 8,
+                        maxHeight: 260,
+                        overflowY: "auto",
+                        padding: 4
+                      }}
+                    >
+                      {activeMembers.map(member => {
+                        const selected = kindOfLoopSelected.includes(member.display_name);
+                        return (
+                          <label
+                            key={member.id}
+                            className="kindofloop-member-option"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              minWidth: 0,
+                              padding: "9px 11px",
+                              border: selected ? "1px solid #777" : "1px solid #d5d5d5",
+                              borderRadius: 8,
+                              background: selected ? "#eeeeee" : "transparent",
+                              cursor: "pointer",
+                              fontSize: 13,
+                              lineHeight: 1.25
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              style={{ width: 15, height: 15, flex: "0 0 auto", margin: 0 }}
+                              onChange={event =>
+                                setKindOfLoopSelected(prev =>
+                                  event.target.checked
+                                    ? [...prev, member.display_name]
+                                    : prev.filter(name => name !== member.display_name)
+                                )
+                              }
+                            />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.display_name}</span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
