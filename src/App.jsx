@@ -65,6 +65,21 @@ function getWeekStart() {
   ].join("-");
 }
 
+function getBangkokDateKey() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+const DAILY_ACTIVITY_TEMPLATES = [
+  { event_type: "airdrop_2000", activity_name: "Airdrop 20.00", scheduled_time: "20:00" },
+  { event_type: "airdrop_2300", activity_name: "Airdrop 23.00", scheduled_time: "23:00" },
+  { event_type: "supplybox", activity_name: "SupplyBox", scheduled_time: null },
+  { event_type: "flag", activity_name: "ชิงธง", scheduled_time: null }
+];
+
 function roleName(role) {
   return role === "leader" ? "Leader"
     : role === "co_leader" ? "Co-Leader" : "Member";
@@ -245,6 +260,30 @@ const readTables = [
   }, [loadAll]);
 
   useEffect(() => {
+    if (!supabase || tab !== "attendance" || !["leader", "co_leader"].includes(profile?.role)) return;
+    let cancelled = false;
+    async function ensureTodayActivities() {
+      const today = getBangkokDateKey();
+      const rows = DAILY_ACTIVITY_TEMPLATES.map(item => ({
+        ...item,
+        activity_date: today,
+        status: "active"
+      }));
+      const { error: createError } = await supabase
+        .from("activities")
+        .upsert(rows, { onConflict: "event_type,activity_date", ignoreDuplicates: true });
+      if (cancelled) return;
+      if (createError) {
+        setError(`สร้างรายการกิจกรรมประจำวันไม่สำเร็จ: ${createError.message}`);
+        return;
+      }
+      await loadAll(false);
+    }
+    ensureTodayActivities();
+    return () => { cancelled = true; };
+  }, [tab, profile?.role, loadAll]);
+
+  useEffect(() => {
     if (!supabase) return;
     const channel = supabase.channel("40fps-management-live");
     ["members", "income", "expenses", "weekly_payments", "deliveries", "activities", "attendance","kind_of_loop_entries"]
@@ -409,6 +448,21 @@ const readTables = [
       setBusy(false);
     }
   }
+  async function cancelActivity(activity) {
+    if (!isAdmin || !activity?.id || busy) return;
+    if (!window.confirm(`ยืนยันยกเลิกกิจกรรม ${activity.activity_name} ของวันที่ ${dateTH(activity.activity_date)}?\nประวัติการเช็คชื่อจะยังถูกเก็บไว้`)) return;
+    setBusy(true);
+    setError("");
+    const { error: cancelError } = await supabase
+      .from("activities").update({ status: "cancelled" }).eq("id", activity.id);
+    if (cancelError) setError(`ยกเลิกกิจกรรมไม่สำเร็จ: ${cancelError.message}`);
+    else {
+      setNotice(`ยกเลิกกิจกรรม ${activity.activity_name} แล้ว`);
+      await loadAll(false);
+    }
+    setBusy(false);
+  }
+
   function acceptKindOfLoopImage(file) {
     if (!file || !file.type?.startsWith("image/")) {
       setError("กรุณาวางหรือเลือกไฟล์รูปภาพเท่านั้น");
@@ -644,32 +698,51 @@ const readTables = [
 
         {tab === "attendance" && (
           <section className="page-content">
-            <Toolbar title="เช็คชื่อกิจกรรม" description="ติ๊กชื่อสมาชิกเพื่อบันทึกการเข้าร่วมกิจกรรมทันที" action={isAdmin ? () => openModal("activity") : null} actionLabel="เพิ่มกิจกรรม" />
+            <Toolbar title="เช็คชื่อกิจกรรม" description="ระบบสร้างรอบกิจกรรมใหม่ให้อัตโนมัติทุกวันตามเวลาไทย" />
+            <div className="attendance-day-heading">
+              <div><span className="eyebrow">TODAY'S ACTIVITIES</span><h3>กิจกรรมประจำวันที่ {dateTH(getBangkokDateKey())}</h3></div>
+              <span className="soft-tag">รีเซ็ตรอบใหม่ทุกวัน</span>
+            </div>
             <div className="activity-checkin-grid">
-              {activities.map(activity => {
+              {activities.filter(activity => activity.activity_date === getBangkokDateKey()).map(activity => {
                 const records = attendance.filter(row => row.activity_id === activity.id);
                 const presentCount = records.length;
-                return <section className="surface-card attendance-card" key={activity.id}>
-                  <div className="attendance-card-head"><div><span className="eyebrow">ACTIVITY CHECK-IN</span><h3>{activity.activity_name}</h3><p>{presentCount} / {activeMembers.length} คนเข้าร่วม</p></div>{isAdmin && <button className="danger-icon" title="ลบกิจกรรม" onClick={() => deleteRow("activities", activity.id)}><Trash2 size={17} /></button>}</div>
-                  <div className="attendance-counts"><span className="count-present"><i /> มาแล้ว {presentCount} คน</span><span className="count-absent"><i /> ยังไม่มา {Math.max(0, activeMembers.length - presentCount)} คน</span></div>
-                  <div className="attendance-list">
-                    {activeMembers.map(member => {
-                      const record = records.find(row => row.member_id === member.id);
-                      return <label className={`attendance-person ${record ? "is-checked" : ""}`} key={member.id}>
-                        <input type="checkbox" checked={!!record} disabled={!isAdmin || busy}
-                          onChange={event => toggleAttendance(activity.id, member.id, record, event.target.checked)} />
-                        <span className="custom-check"><CheckCircle2 size={16} /></span>
-                        <span className="person-name">{member.display_name}</span>
-                        <span className={`attendance-state ${record ? "done" : "waiting"}`}>{record ? "เช็คชื่อแล้ว" : "ยังไม่เช็ค"}</span>
-                      </label>;
-                    })}
-                    {!activeMembers.length && <EmptyState text="ยังไม่มีสมาชิกที่เปิดใช้งาน" />}
+                const cancelled = activity.status === "cancelled";
+                return <section className={`surface-card attendance-card ${cancelled ? "activity-cancelled" : ""}`} key={activity.id}>
+                  <div className="attendance-card-head"><div><span className="eyebrow">{activity.scheduled_time || "DAILY ACTIVITY"}</span><h3>{activity.activity_name}</h3><p>{presentCount} / {activeMembers.length} คนเข้าร่วม</p></div>
+                    {isAdmin && !cancelled && <button className="danger-button" disabled={busy} onClick={() => cancelActivity(activity)}>ยกเลิกกิจกรรม</button>}
                   </div>
+                  {cancelled ? <div className="activity-cancelled-note">ยกเลิกกิจกรรมแล้ว • เก็บประวัติเดิมไว้</div> : <>
+                    <div className="attendance-counts"><span className="count-present"><i /> มาแล้ว {presentCount} คน</span><span className="count-absent"><i /> ยังไม่มา {Math.max(0, activeMembers.length - presentCount)} คน</span></div>
+                    <div className="attendance-list">
+                      {activeMembers.map(member => {
+                        const record = records.find(row => row.member_id === member.id);
+                        return <label className={`attendance-person ${record ? "is-checked" : ""}`} key={member.id}>
+                          <input type="checkbox" checked={!!record} disabled={!isAdmin || busy}
+                            onChange={event => toggleAttendance(activity.id, member.id, record, event.target.checked)} />
+                          <span className="custom-check"><CheckCircle2 size={16} /></span>
+                          <span className="person-name">{member.display_name}</span>
+                          <span className={`attendance-state ${record ? "done" : "waiting"}`}>{record ? "เช็คชื่อแล้ว" : "ยังไม่เช็ค"}</span>
+                        </label>;
+                      })}
+                      {!activeMembers.length && <EmptyState text="ยังไม่มีสมาชิกที่เปิดใช้งาน" />}
+                    </div>
+                  </>}
                   {!isAdmin && <p className="readonly-note"><Lock size={14} /> บัญชีนี้ดูสถานะได้อย่างเดียว</p>}
                 </section>;
               })}
-              {!activities.length && <div className="surface-card empty-wide"><EmptyState text="ยังไม่มีกิจกรรมในระบบ ผู้ดูแลสามารถกดเพิ่มกิจกรรมได้" /></div>}
+              {!activities.some(activity => activity.activity_date === getBangkokDateKey()) && <div className="surface-card empty-wide"><EmptyState text={isAdmin ? "กำลังเตรียมกิจกรรมประจำวัน..." : "ยังไม่มีรายการกิจกรรมของวันนี้"} /></div>}
             </div>
+            <section className="surface-card table-card attendance-history-card">
+              <SectionHeading title="ประวัติกิจกรรมที่ผ่านมา" detail="ข้อมูลเก่ายังคงอยู่ แม้เริ่มวันใหม่หรือยกเลิกกิจกรรม" />
+              <div className="table-scroll"><table><thead><tr><th>วันที่</th><th>กิจกรรม</th><th>เวลา</th><th>เช็คชื่อแล้ว</th><th>สถานะ</th></tr></thead><tbody>
+                {activities.filter(activity => activity.activity_date !== getBangkokDateKey()).sort((a, b) => String(b.activity_date || b.created_at || "").localeCompare(String(a.activity_date || a.created_at || ""))).map(activity => {
+                  const count = attendance.filter(row => row.activity_id === activity.id).length;
+                  return <tr key={activity.id}><td>{dateTH(activity.activity_date || activity.created_at)}</td><td>{activity.activity_name}</td><td>{activity.scheduled_time || "—"}</td><td>{count} คน</td><td><span className={`leave-pill ${activity.status === "cancelled" ? "rejected" : "approved"}`}>{activity.status === "cancelled" ? "ยกเลิก" : "เสร็จสิ้น"}</span></td></tr>;
+                })}
+                {!activities.some(activity => activity.activity_date !== getBangkokDateKey()) && <tr><td colSpan="5"><EmptyState text="ยังไม่มีประวัติกิจกรรมก่อนหน้านี้" /></td></tr>}
+              </tbody></table></div>
+            </section>
           </section>
         )}
 
