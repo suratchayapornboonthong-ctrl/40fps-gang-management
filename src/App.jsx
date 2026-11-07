@@ -410,8 +410,8 @@ const readTables = [
   async function submitKindOfLoop(event) {
     event.preventDefault();
 
-    if (!isAdmin || !session?.user?.id) {
-      setError("เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้");
+    if (!session?.user?.id) {
+      setError("กรุณาเข้าสู่ระบบก่อนส่งหลักฐาน");
       return;
     }
 
@@ -665,7 +665,7 @@ const readTables = [
               description="ส่งหลักฐานเพื่อรับคะแนน +1 ต่อสมาชิกที่เลือก"
             />
 
-            {isAdmin && (
+            {session?.user?.id && (
               <div className="surface-card form-card">
                 <SectionHeading
                   title="ส่งหลักฐานกิจกรรม"
@@ -722,9 +722,9 @@ const readTables = [
               </div>
             )}
 
-            {!isAdmin && (
+            {!session?.user?.id && (
               <div className="surface-card">
-                <p>เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้</p>
+                <p>กรุณาเข้าสู่ระบบก่อน จึงจะสามารถส่งหลักฐาน Kind of Loop ได้</p>
               </div>
             )}
 
