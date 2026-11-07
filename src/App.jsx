@@ -96,6 +96,8 @@ export default function App() {
   const [kindOfLoopEntries, setKindOfLoopEntries] = useState([]);
   const [kindOfLoopSelected, setKindOfLoopSelected] = useState([]);
   const [kindOfLoopUrl, setKindOfLoopUrl] = useState("");
+  const [kindOfLoopImage, setKindOfLoopImage] = useState(null);
+  const [kindOfLoopPreview, setKindOfLoopPreview] = useState("");
   const [kindOfLoopNote, setKindOfLoopNote] = useState("");
   const [modal, setModal] = useState("");
   const [form, setForm] = useState({});
@@ -407,6 +409,31 @@ const readTables = [
       setBusy(false);
     }
   }
+  function acceptKindOfLoopImage(file) {
+    if (!file || !file.type?.startsWith("image/")) {
+      setError("กรุณาวางหรือเลือกไฟล์รูปภาพเท่านั้น");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("รูปภาพต้องมีขนาดไม่เกิน 10 MB");
+      return;
+    }
+    setKindOfLoopImage(file);
+    setKindOfLoopPreview(URL.createObjectURL(file));
+    setKindOfLoopUrl("");
+    setError("");
+    setNotice("วางรูปภาพเรียบร้อยแล้ว");
+  }
+
+  function handleKindOfLoopPaste(event) {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find(item => item.type?.startsWith("image/"));
+    if (imageItem) {
+      event.preventDefault();
+      acceptKindOfLoopImage(imageItem.getAsFile());
+    }
+  }
+
   async function submitKindOfLoop(event) {
     event.preventDefault();
 
@@ -414,43 +441,49 @@ const readTables = [
       setError("กรุณาเลือกสมาชิกอย่างน้อย 1 คน");
       return;
     }
-
-    let parsedUrl;
-
-    try {
-      parsedUrl = new URL(kindOfLoopUrl.trim());
-    } catch {
-      setError("กรุณาวางลิงก์หลักฐานให้ถูกต้อง");
+    if (!kindOfLoopImage) {
+      setError("กรุณาแคปรูปแล้วกด Ctrl + V วางในช่องหลักฐาน");
       return;
     }
-
-    if (parsedUrl.protocol !== "https:") {
-      setError("ลิงก์หลักฐานต้องขึ้นต้นด้วย https://");
-      return;
-    }
-
-    const selectedCount = kindOfLoopSelected.length;
 
     setBusy(true);
     setError("");
+    setNotice("");
 
     try {
+      const extension = (kindOfLoopImage.type.split("/")[1] || "png").replace("jpeg", "jpg");
+      const filePath = `kind-of-loop/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from("kind-of-loop-proofs")
+        .upload(filePath, kindOfLoopImage, {
+          contentType: kindOfLoopImage.type,
+          upsert: false
+        });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from("kind-of-loop-proofs")
+        .getPublicUrl(filePath);
+      const imageUrl = publicUrlData?.publicUrl;
+      if (!imageUrl) throw new Error("ไม่สามารถสร้างลิงก์รูปหลักฐานได้");
+
+      const selectedCount = kindOfLoopSelected.length;
       const { error: submitError } = await supabase
         .from("kind_of_loop_entries")
         .insert({
           selected_members: kindOfLoopSelected,
           points: 1,
-          image_url: parsedUrl.href,
+          image_url: imageUrl,
           note: kindOfLoopNote.trim() || null
         });
-
       if (submitError) throw submitError;
 
       setKindOfLoopSelected([]);
+      setKindOfLoopImage(null);
+      setKindOfLoopPreview("");
       setKindOfLoopUrl("");
       setKindOfLoopNote("");
       setNotice(`บันทึกคะแนน +1 ให้สมาชิก ${selectedCount} คนแล้ว`);
-
       await loadAll(false);
     } catch (e) {
       setError(e.message || "ส่งหลักฐานไม่สำเร็จ");
@@ -458,6 +491,7 @@ const readTables = [
       setBusy(false);
     }
   }
+
   if (!supabase) {
     return (
       <div className="setup-screen">
@@ -689,14 +723,33 @@ const readTables = [
                   </div>
 
                   <div className="form-field">
-                    <label>ลิงก์รูปหลักฐาน (HTTPS)</label>
-                    <input
-                      type="url"
-                      value={kindOfLoopUrl}
-                      onChange={event => setKindOfLoopUrl(event.target.value)}
-                      placeholder="วางลิงก์รูปภาพที่นี่"
-                      required
-                    />
+                    <label>รูปหลักฐาน</label>
+                    <div
+                      tabIndex={0}
+                      role="button"
+                      onPaste={handleKindOfLoopPaste}
+                      onDragOver={event => event.preventDefault()}
+                      onDrop={event => {
+                        event.preventDefault();
+                        acceptKindOfLoopImage(event.dataTransfer.files?.[0]);
+                      }}
+                      style={{ border: "2px dashed #888", borderRadius: 12, padding: 22, textAlign: "center", cursor: "pointer", outlineOffset: 3 }}
+                    >
+                      <p>คลิกบริเวณนี้ แล้วกด <strong>Ctrl + V</strong> เพื่อวางรูปที่แคปไว้</p>
+                      <p>หรือเลือกไฟล์รูป / ลากรูปมาวาง (สูงสุด 10 MB)</p>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={event => acceptKindOfLoopImage(event.target.files?.[0])}
+                      />
+                      {kindOfLoopPreview && (
+                        <div style={{ marginTop: 14 }}>
+                          <img src={kindOfLoopPreview} alt="ตัวอย่างหลักฐาน" style={{ maxWidth: "100%", maxHeight: 280, borderRadius: 10 }} />
+                          <p>วางรูปเรียบร้อย พร้อมส่งหลักฐาน</p>
+                          <button type="button" className="secondary-button" onClick={() => { setKindOfLoopImage(null); setKindOfLoopPreview(""); }}>ลบรูปที่เลือก</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="form-field">
