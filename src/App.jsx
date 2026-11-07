@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Wallet, HandCoins, Package, Users, CalendarCheck,
   CalendarDays, LogOut, Plus, RefreshCw, Search, Menu, X, ShieldCheck,
   ArrowDownLeft, ArrowUpRight, CheckCircle2, Trash2, Edit3, Lock,
-    ClipboardList, ChevronRight, Trophy
+  ClipboardList, ChevronRight, Trophy
 } from "lucide-react";
 import "./style.css";
 
@@ -165,7 +165,7 @@ export default function App() {
       }
       setProfile(currentProfile);
 
-    const readTables = [
+const readTables = [
   ["members", setMembers],
   ["income", setIncome],
   ["expenses", setExpenses],
