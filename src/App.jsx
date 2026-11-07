@@ -706,10 +706,12 @@ const readTables = [
                       className="kindofloop-member-grid"
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))",
+                        gridAutoFlow: "column",
+                        gridTemplateRows: "repeat(2, minmax(0, auto))",
+                        gridAutoColumns: "minmax(145px, 1fr)",
                         gap: 8,
-                        maxHeight: 260,
-                        overflowY: "auto",
+                        overflowX: "auto",
+                        overflowY: "hidden",
                         padding: 4
                       }}
                     >
