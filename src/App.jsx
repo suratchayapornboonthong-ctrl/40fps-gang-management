@@ -50,10 +50,13 @@ const dateTimeTH = value => value
   ? new Date(value).toLocaleString("th-TH")
   : "";
 
-function getWeekStart() {
+ {function getWeekStart() {
   const date = new Date();
-  const day = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - day);
+
+  // เริ่มรอบทุกวันเสาร์
+  const daysSinceSaturday = (date.getDay() + 1) % 7;
+  date.setDate(date.getDate() - daysSinceSaturday);
+
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
