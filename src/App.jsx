@@ -51,7 +51,7 @@ const dateTimeTH = value => value
   ? new Date(value).toLocaleString("th-TH")
   : "";
 
- {function getWeekStart() {
+function getWeekStart() {
   const date = new Date();
 
   // เริ่มรอบทุกวันเสาร์
@@ -267,70 +267,26 @@ const readTables = [
   }, [loadAll]);
 
   async function handleLogin(event) {
-  event.preventDefault();
-
-  if (!isAdmin || !session?.user?.id) {
-    setError("เฉพาะ Leader และ Co-Leader เท่านั้นที่ส่งหลักฐานได้");
-    return;
-  }
-
-  if (kindOfLoopSelected.length === 0) {
-    setError("กรุณาเลือกสมาชิกอย่างน้อย 1 คน");
-    return;
-  }
-
-  let parsedUrl;
-
-  try {
-    parsedUrl = new URL(kindOfLoopUrl.trim());
-  } catch {
-    setError("กรุณาวางลิงก์หลักฐานให้ถูกต้อง");
-    return;
-  }
-
-  if (parsedUrl.protocol !== "https:") {
-    setError("ลิงก์หลักฐานต้องขึ้นต้นด้วย https://");
-    return;
-  }
-
-  setBusy(true);
-  setError("");
-
-  try {
-    const { error: submitError } = await supabase
-      .from("kind_of_loop_entries")
-      .insert({
-        selected_members: kindOfLoopSelected,
-        points: 1,
-        image_url: parsedUrl.href,
-        note: kindOfLoopNote.trim() || null,
-        created_by: session.user.id
-      });
-
-    if (submitError) throw submitError;
-
-    setKindOfLoopSelected([]);
-    setKindOfLoopUrl("");
-    setKindOfLoopNote("");
-    setNotice(`บันทึกคะแนน +1 ให้สมาชิก ${kindOfLoopSelected.length} คนแล้ว`);
-
-    await loadAll(false);
-  } catch (e) {
-    setError(e.message || "ส่งหลักฐานไม่สำเร็จ");
-  } finally {
-    setBusy(false);
-  }
     event.preventDefault();
     setBusy(true);
     setError("");
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-    if (loginError) setError(loginError.message);
-    else {
+
+    try {
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (loginError) throw loginError;
+
       setLoginOpen(false);
       setPassword("");
       setNotice("เข้าสู่ระบบสำเร็จ");
+    } catch (e) {
+      setError(e.message || "เข้าสู่ระบบไม่สำเร็จ");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function handleLogout() {
